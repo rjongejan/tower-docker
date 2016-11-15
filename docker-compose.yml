@@ -1,0 +1,14 @@
+version: '2'
+services:
+  db:
+    image: postgres:9.4
+    environment:
+      - POSTGRES_USER=awx
+      - POSTGRES_PASSWORD=ansible
+      - POSTGRES_DB=awx
+  app:
+    build: .
+    ports:
+      - "80:80"
+    depends_on:
+      - db

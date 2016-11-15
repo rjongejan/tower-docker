@@ -1,0 +1,47 @@
+---
+- name: Configure Postgres DB
+  hosts: localhost
+  vars:
+    aw_user: awx
+    admin_username: admin
+    admin_email: admin@example.com
+    awx_install_admin_password: ansible
+
+  tasks:
+  - name: Set Postgres DB url
+    lineinfile:
+      dest: /etc/tower/conf.d/postgres.py
+      regexp: "'HOST':"
+      line: "'HOST': 'db',"
+
+  - name: Wait for Database connection
+    wait_for:
+      host: db
+      port: 5432
+      state: started
+      timeout: 15
+
+  - name: Migrate the Tower database schema.
+    command: tower-manage migrate --noinput --fake-initial
+    become_user: '{{ aw_user }}'
+    become: True
+    register: tower_migrate
+    changed_when: "'No migrations to apply' not in tower_migrate.stdout"
+
+  - name: Register the primary instance in the database.
+    shell: tower-manage register_instance --primary --hostname="{{ inventory_hostname }}"
+    args:
+      executable: /bin/bash
+    become_user: '{{ aw_user }}'
+    become: True
+    register: register_instance
+    changed_when: "'changed: True' in register_instance.stdout"
+
+  - name: Create Django super user if it does not exist.
+    shell: echo "from django.contrib.auth.models import User; User.objects.create_superuser('{{ admin_username }}', '{{ admin_email }}', '{{ awx_install_admin_password }}')" | tower-manage shell
+    become_user: '{{ aw_user }}'
+    become: True
+    no_log: True
+
+  - name: Restart Tower service.
+    shell: ansible-tower-service start
